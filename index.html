@@ -4,7 +4,6 @@
     <title>Element Message Forwarder</title>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <script src="https://unpkg.com/matrix-widget-api@0.3.0/dist/matrix-widget-api.min.js"></script>
     <style>
         :root {
             --primary-color: #368bd6;
@@ -101,15 +100,27 @@
 </div>
 
 <script>
+    function loadMatrixWidgetApi(callback) {
+        const script = document.createElement('script');
+        script.src = "https://unpkg.com/matrix-widget-api@0.3.0/dist/matrix-widget-api.min.js";
+        script.onload = () => {
+            console.log("✅ matrix-widget-api loaded!");
+            callback();
+        };
+        script.onerror = () => {
+            document.getElementById('status').textContent = "❌ Failed to load MatrixWidgetApi library.";
+        };
+        document.head.appendChild(script);
+    }
+
     async function initializeWidget() {
         const statusEl = document.getElementById('status');
-        console.log("api: " + window.MatrixWidgetApi);
         const showStatus = msg => { statusEl.textContent = msg; statusEl.className = "status"; };
         const showError = msg => { statusEl.textContent = msg; statusEl.className = "status error"; console.error(msg); };
         const showSuccess = msg => { statusEl.textContent = msg; statusEl.className = "status success"; };
 
         if (!window.MatrixWidgetApi) {
-            showError("Matrix Widget API failed to load.");
+            showError("Matrix Widget API is still undefined.");
             return;
         }
 
@@ -137,10 +148,6 @@
             showError("Widget error: " + err.message);
         });
 
-        widgetApi.on("action", (a) => {
-            console.log("Widget received action:", a);
-        });
-
         async function loadRooms() {
             try {
                 const rooms = await widgetApi.getJoinedRooms?.() || [];
@@ -164,7 +171,6 @@
             }
         }
 
-        // Select a message to forward
         document.getElementById('selectMessageBtn').addEventListener('click', async () => {
             try {
                 showStatus("Click a message in the room timeline...");
@@ -184,7 +190,6 @@
             }
         });
 
-        // Forward the message
         document.getElementById('confirmForwardBtn').addEventListener('click', async () => {
             const targetRoom = document.getElementById('roomSelect').value;
             const sender = document.getElementById('selectedSender').textContent;
@@ -208,43 +213,3 @@
                     format: "org.matrix.custom.html",
                     formatted_body: `
                         <div style="border-left: 3px solid #368bd6; padding-left: 10px; margin: 10px 0;">
-                            <p style="margin: 0 0 5px 0; color: #368bd6; font-weight: bold;">
-                                Forwarded from ${sender}
-                            </p>
-                            <p style="margin: 0;">${body}</p>
-                        </div>
-                        <p><a href="${messageLink}" style="color: #368bd6;">View original message</a></p>
-                    `
-                };
-
-                await widgetApi.sendEvent("m.room.message", content, targetRoom);
-                showSuccess("Message forwarded!");
-
-                setTimeout(() => {
-                    document.getElementById('step2').classList.remove('active');
-                    document.getElementById('step1').classList.add('active');
-                    showStatus("");
-                }, 2000);
-            } catch (e) {
-                showError("Forwarding failed: " + e.message);
-                console.error("Forward error:", e);
-            }
-        });
-
-        document.getElementById('cancelBtn').addEventListener('click', () => {
-            document.getElementById('step2').classList.remove('active');
-            document.getElementById('step1').classList.add('active');
-            showStatus("");
-        });
-
-        widgetApi.start();
-    }
-
-    if (document.readyState === 'complete') {
-        initializeWidget();
-    } else {
-        window.addEventListener('load', initializeWidget);
-    }
-</script>
-</body>
-</html>
