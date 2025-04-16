@@ -4,7 +4,7 @@
     <title>Element Message Forwarder</title>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <script src="https://unpkg.com/matrix-widget-api@0.1.8/dist/matrix-widget-api.min.js"></script>
+    <script src="https://unpkg.com/matrix-widget-api@0.3.0/dist/matrix-widget-api.min.js"></script>
     <style>
         :root {
             --primary-color: #368bd6;
@@ -30,13 +30,8 @@
             margin-bottom: 20px;
             text-align: center;
         }
-        .step {
-            display: none;
-            animation: fadeIn 0.3s ease;
-        }
-        .step.active {
-            display: block;
-        }
+        .step { display: none; animation: fadeIn 0.3s ease; }
+        .step.active { display: block; }
         button {
             background-color: var(--primary-color);
             color: white;
@@ -49,16 +44,12 @@
             margin: 5px 0;
             transition: background-color 0.2s;
         }
-        button:hover {
-            background-color: var(--hover-color);
-        }
+        button:hover { background-color: var(--hover-color); }
         button.secondary {
             background-color: #f0f0f0;
             color: var(--text-color);
         }
-        button.secondary:hover {
-            background-color: #e0e0e0;
-        }
+        button.secondary:hover { background-color: #e0e0e0; }
         select {
             width: 100%;
             padding: 10px;
@@ -74,202 +65,185 @@
             margin: 15px 0;
             border-radius: 0 4px 4px 0;
         }
-        .sender {
-            font-weight: bold;
-            color: var(--primary-color);
-        }
+        .sender { font-weight: bold; color: var(--primary-color); }
         .status {
             padding: 10px;
             margin: 10px 0;
             border-radius: 4px;
             text-align: center;
         }
-        .success {
-            background-color: #e8f5e9;
-            color: #2e7d32;
-        }
-        .error {
-            background-color: #ffebee;
-            color: #c62828;
-        }
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
+        .success { background-color: #e8f5e9; color: #2e7d32; }
+        .error { background-color: #ffebee; color: #c62828; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h2>Message Forwarder</h2>
+<div class="container">
+    <h2>Message Forwarder</h2>
 
-        <div id="step1" class="step active">
-            <p>Select a message to forward from the room timeline:</p>
-            <button id="selectMessageBtn">Select Message</button>
-        </div>
-
-        <div id="step2" class="step">
-            <div class="message-preview">
-                <p>Forwarding message from: <span id="selectedSender" class="sender"></span></p>
-                <p id="selectedBody"></p>
-            </div>
-            <label for="roomSelect">Choose destination room:</label>
-            <select id="roomSelect"></select>
-            <button id="confirmForwardBtn">Forward Message</button>
-            <button id="cancelBtn" class="secondary">Cancel</button>
-        </div>
-
-        <div id="status" class="status"></div>
+    <div id="step1" class="step active">
+        <p>Select a message to forward from the room timeline:</p>
+        <button id="selectMessageBtn">Select Message</button>
     </div>
 
-    <script>
-        // Initialize the widget
-        function initializeWidget() {
-            const statusEl = document.getElementById('status');
-            const showStatus = msg => { statusEl.textContent = msg; statusEl.className = "status"; };
-            const showError = msg => { statusEl.textContent = msg; statusEl.className = "status error"; console.error(msg); };
-            const showSuccess = msg => { statusEl.textContent = msg; statusEl.className = "status success"; };
+    <div id="step2" class="step">
+        <div class="message-preview">
+            <p>Forwarding message from: <span id="selectedSender" class="sender"></span></p>
+            <p id="selectedBody"></p>
+        </div>
+        <label for="roomSelect">Choose destination room:</label>
+        <select id="roomSelect"></select>
+        <button id="confirmForwardBtn">Forward Message</button>
+        <button id="cancelBtn" class="secondary">Cancel</button>
+    </div>
 
-            if (typeof window.WidgetApi === 'undefined') {
-                showError("Matrix Widget API failed to load");
-                return;
-            }
+    <div id="status" class="status"></div>
+</div>
 
-            const widgetId = window.location.hash.substring(1);
-            const widgetApi = new window.WidgetApi(widgetId);
+<script>
+    async function initializeWidget() {
+        const statusEl = document.getElementById('status');
+        const showStatus = msg => { statusEl.textContent = msg; statusEl.className = "status"; };
+        const showError = msg => { statusEl.textContent = msg; statusEl.className = "status error"; console.error(msg); };
+        const showSuccess = msg => { statusEl.textContent = msg; statusEl.className = "status success"; };
 
-            // Request capabilities from the API
-            widgetApi.requestCapabilities([
-                "org.matrix.msc2762.timeline:*",
-                "org.matrix.msc2762.send.event:m.room.message",
-                "org.matrix.msc2762.receive.state_event:m.room.member"
-            ]);
+        if (!window.MatrixWidgetApi) {
+            showError("Matrix Widget API failed to load.");
+            return;
+        }
 
-            widgetApi.on("ready", () => {
-                console.log("Widget ready");
-                showStatus("Ready to forward messages");
-                loadRooms();
-            });
+        const widgetId = window.location.hash?.substring(1) || "default-widget-id";
+        const widgetApi = new MatrixWidgetApi(widgetId);
 
-            widgetApi.on("error", (err) => {
-                console.error("Widget error:", err);
-                showError("Connection error: " + err.message);
-            });
+        widgetApi.requestCapabilities([
+            "org.matrix.msc2876.send_event",
+            "org.matrix.msc2876.receive_event",
+            "org.matrix.msc2876.send_event:m.room.message",
+            "org.matrix.msc2876.receive_event:m.room.message",
+            "org.matrix.msc2876.receive_state",
+            "org.matrix.msc2876.send_state",
+            "org.matrix.msc2876.send_state:m.room.message",
+            "org.matrix.msc2876.get_rooms"
+        ]);
 
-            // Load the rooms the user is a part of
-            async function loadRooms() {
-                try {
-                    const rooms = await widgetApi.getJoinedRooms();
-                    const select = document.getElementById('roomSelect');
-                    select.innerHTML = '';
+        widgetApi.on("ready", () => {
+            console.log("✅ Widget is ready.");
+            showStatus("Ready to forward messages");
+            loadRooms();
+        });
 
-                    if (rooms.length === 0) {
-                        select.innerHTML = '<option value="">No rooms available</option>';
-                        return;
-                    }
+        widgetApi.on("error", (err) => {
+            showError("Widget error: " + err.message);
+        });
 
-                    rooms.forEach(roomId => {
-                        const option = document.createElement('option');
-                        option.value = roomId;
-                        option.textContent = roomId;
-                        select.appendChild(option);
-                    });
-                } catch (e) {
-                    showError("Failed to load rooms");
-                    console.error("Room load error:", e);
-                }
-            }
+        widgetApi.on("action", (a) => {
+            console.log("Widget received action:", a);
+        });
 
-            // Step 1: Select a message
-            document.getElementById('selectMessageBtn').addEventListener('click', async () => {
-                try {
-                    showStatus("Click on a message in the room...");
-                    const event = await widgetApi.readEventFromRoom();
-                    if (event) {
-                        document.getElementById('selectedSender').textContent = event.sender;
-                        document.getElementById('selectedBody').textContent = event.content.body;
-                        
-                        document.getElementById('step1').classList.remove('active');
-                        document.getElementById('step2').classList.add('active');
-                        showStatus("");
-                    } else {
-                        showError("No message selected");
-                    }
-                } catch (e) {
-                    showError("Failed to select message");
-                    console.error("Selection error:", e);
-                }
-            });
+        async function loadRooms() {
+            try {
+                const rooms = await widgetApi.getJoinedRooms?.() || [];
+                const select = document.getElementById('roomSelect');
+                select.innerHTML = '';
 
-            // Step 2: Forward the message
-            document.getElementById('confirmForwardBtn').addEventListener('click', async () => {
-                const targetRoom = document.getElementById('roomSelect').value;
-                const sender = document.getElementById('selectedSender').textContent;
-                const body = document.getElementById('selectedBody').textContent;
-
-                if (!targetRoom) {
-                    showError("Please select a destination room");
+                if (rooms.length === 0) {
+                    select.innerHTML = '<option value="">No rooms available</option>';
                     return;
                 }
 
-                try {
-                    showStatus("Forwarding message...");
+                rooms.forEach(roomId => {
+                    const option = document.createElement('option');
+                    option.value = roomId;
+                    option.textContent = roomId;
+                    select.appendChild(option);
+                });
+            } catch (e) {
+                showError("Failed to load rooms");
+                console.error("Room load error:", e);
+            }
+        }
 
-                    const originalEvent = await widgetApi.readEventFromRoom();
-                    const messageLink = originalEvent ? 
-                        `https://matrix.to/#/${originalEvent.room_id}/${originalEvent.event_id}` : 
-                        "[message link unavailable]";
-
-                    const content = {
-                        msgtype: "m.text",
-                        body: `[Forwarded from ${sender}]: ${body}\n\n${messageLink}`,
-                        format: "org.matrix.custom.html",
-                        formatted_body: `
-                            <div style="border-left: 3px solid #368bd6; padding-left: 10px; margin: 10px 0;">
-                                <p style="margin: 0 0 5px 0; color: #368bd6; font-weight: bold;">
-                                    Forwarded from ${sender}
-                                </p>
-                                <p style="margin: 0;">${body}</p>
-                            </div>
-                            <p><a href="${messageLink}" style="color: #368bd6;">View original message</a></p>
-                        `,
-                        "m.relates_to": {
-                            "m.in_reply_to": {
-                                "event_id": originalEvent?.event_id || ""
-                            }
-                        }
-                    };
-
-                    await widgetApi.sendEvent("m.room.message", content, targetRoom);
-                    showSuccess("Message forwarded successfully!");
-
-                    // Reset after 2 seconds
-                    setTimeout(() => {
-                        document.getElementById('step2').classList.remove('active');
-                        document.getElementById('step1').classList.add('active');
-                        showStatus("");
-                    }, 2000);
-                } catch (e) {
-                    showError("Failed to forward message: " + e.message);
-                    console.error("Forward error:", e);
+        // Select a message to forward
+        document.getElementById('selectMessageBtn').addEventListener('click', async () => {
+            try {
+                showStatus("Click a message in the room timeline...");
+                const event = await widgetApi.readEventFromRoom();
+                if (event) {
+                    document.getElementById('selectedSender').textContent = event.sender;
+                    document.getElementById('selectedBody').textContent = event.content.body;
+                    document.getElementById('step1').classList.remove('active');
+                    document.getElementById('step2').classList.add('active');
+                    showStatus("");
+                } else {
+                    showError("No message selected");
                 }
-            });
+            } catch (e) {
+                showError("Failed to select message");
+                console.error("Select error:", e);
+            }
+        });
 
-            // Cancel button
-            document.getElementById('cancelBtn').addEventListener('click', () => {
-                document.getElementById('step2').classList.remove('active');
-                document.getElementById('step1').classList.add('active');
-                showStatus("");
-            });
+        // Forward the message
+        document.getElementById('confirmForwardBtn').addEventListener('click', async () => {
+            const targetRoom = document.getElementById('roomSelect').value;
+            const sender = document.getElementById('selectedSender').textContent;
+            const body = document.getElementById('selectedBody').textContent;
 
-            // Start widget API
-            widgetApi.start();
-        }
+            if (!targetRoom) {
+                showError("Please select a destination room");
+                return;
+            }
 
-        if (document.readyState === 'complete') {
-            initializeWidget();
-        } else {
-            window.addEventListener('load', initializeWidget);
-        }
-    </script>
+            try {
+                showStatus("Forwarding message...");
+                const originalEvent = await widgetApi.readEventFromRoom();
+                const messageLink = originalEvent ?
+                    `https://matrix.to/#/${originalEvent.room_id}/${originalEvent.event_id}` :
+                    "[message link unavailable]";
+
+                const content = {
+                    msgtype: "m.text",
+                    body: `[Forwarded from ${sender}]: ${body}\n\n${messageLink}`,
+                    format: "org.matrix.custom.html",
+                    formatted_body: `
+                        <div style="border-left: 3px solid #368bd6; padding-left: 10px; margin: 10px 0;">
+                            <p style="margin: 0 0 5px 0; color: #368bd6; font-weight: bold;">
+                                Forwarded from ${sender}
+                            </p>
+                            <p style="margin: 0;">${body}</p>
+                        </div>
+                        <p><a href="${messageLink}" style="color: #368bd6;">View original message</a></p>
+                    `
+                };
+
+                await widgetApi.sendEvent("m.room.message", content, targetRoom);
+                showSuccess("Message forwarded!");
+
+                setTimeout(() => {
+                    document.getElementById('step2').classList.remove('active');
+                    document.getElementById('step1').classList.add('active');
+                    showStatus("");
+                }, 2000);
+            } catch (e) {
+                showError("Forwarding failed: " + e.message);
+                console.error("Forward error:", e);
+            }
+        });
+
+        document.getElementById('cancelBtn').addEventListener('click', () => {
+            document.getElementById('step2').classList.remove('active');
+            document.getElementById('step1').classList.add('active');
+            showStatus("");
+        });
+
+        widgetApi.start();
+    }
+
+    if (document.readyState === 'complete') {
+        initializeWidget();
+    } else {
+        window.addEventListener('load', initializeWidget);
+    }
+</script>
 </body>
 </html>
