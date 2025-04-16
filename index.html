@@ -103,11 +103,11 @@
 <script>
     async function initializeWidget() {
         const statusEl = document.getElementById('status');
+        console.log("api: " + window.MatrixWidgetApi);
         const showStatus = msg => { statusEl.textContent = msg; statusEl.className = "status"; };
         const showError = msg => { statusEl.textContent = msg; statusEl.className = "status error"; console.error(msg); };
         const showSuccess = msg => { statusEl.textContent = msg; statusEl.className = "status success"; };
 
-        console.log("api: " + window.MatrixWidgetApi);
         if (!window.MatrixWidgetApi) {
             showError("Matrix Widget API failed to load.");
             return;
