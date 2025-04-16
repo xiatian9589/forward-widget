@@ -103,8 +103,8 @@
         <h2>Message Forwarder</h2>
 
         <div id="step1" class="step active">
-            <p>Click below to simulate selecting a message:</p>
-            <button id="selectMessageBtn">Simulate Select</button>
+            <p>Select a message to forward from the room timeline:</p>
+            <button id="selectMessageBtn">Select Message</button>
         </div>
 
         <div id="step2" class="step">
@@ -122,6 +122,7 @@
     </div>
 
     <script>
+        // Initialize the widget
         function initializeWidget() {
             const statusEl = document.getElementById('status');
             const showStatus = msg => { statusEl.textContent = msg; statusEl.className = "status"; };
@@ -133,9 +134,10 @@
                 return;
             }
 
-            const widgetId = window.location.hash.substring(1) || "hardcoded-widget-id";
+            const widgetId = window.location.hash.substring(1);
             const widgetApi = new window.WidgetApi(widgetId);
 
+            // Request capabilities from the API
             widgetApi.requestCapabilities([
                 "org.matrix.msc2762.timeline:*",
                 "org.matrix.msc2762.send.event:m.room.message",
@@ -153,12 +155,18 @@
                 showError("Connection error: " + err.message);
             });
 
+            // Load the rooms the user is a part of
             async function loadRooms() {
                 try {
+                    const rooms = await widgetApi.getJoinedRooms();
                     const select = document.getElementById('roomSelect');
-                    // Simulate hardcoded room list
-                    const rooms = ["!DrzcMUEIcofAGJHyub:matrix.org", "!roomTest123:matrix.org"];
                     select.innerHTML = '';
+
+                    if (rooms.length === 0) {
+                        select.innerHTML = '<option value="">No rooms available</option>';
+                        return;
+                    }
+
                     rooms.forEach(roomId => {
                         const option = document.createElement('option');
                         option.value = roomId;
@@ -167,32 +175,36 @@
                     });
                 } catch (e) {
                     showError("Failed to load rooms");
+                    console.error("Room load error:", e);
                 }
             }
 
-            document.getElementById('selectMessageBtn').addEventListener('click', () => {
-                // Simulated message data (hardcoded for local test)
-                const hardcodedMessage = {
-                    sender: "@kelevin89:matrix.org",
-                    content: { body: "大大，thread有tag你" },
-                    event_id: "$bLa70ipgJhTpLWaTyC5bV4UZENa11qj_CCcjAWFpL2M",
-                    room_id: "!DrzcMUEIcofAGJHyub:matrix.org"
-                };
-
-                document.getElementById('selectedSender').textContent = hardcodedMessage.sender;
-                document.getElementById('selectedBody').textContent = hardcodedMessage.content.body;
-
-                document.getElementById('step1').classList.remove('active');
-                document.getElementById('step2').classList.add('active');
-                showStatus("");
-                window._simulatedEvent = hardcodedMessage;
+            // Step 1: Select a message
+            document.getElementById('selectMessageBtn').addEventListener('click', async () => {
+                try {
+                    showStatus("Click on a message in the room...");
+                    const event = await widgetApi.readEventFromRoom();
+                    if (event) {
+                        document.getElementById('selectedSender').textContent = event.sender;
+                        document.getElementById('selectedBody').textContent = event.content.body;
+                        
+                        document.getElementById('step1').classList.remove('active');
+                        document.getElementById('step2').classList.add('active');
+                        showStatus("");
+                    } else {
+                        showError("No message selected");
+                    }
+                } catch (e) {
+                    showError("Failed to select message");
+                    console.error("Selection error:", e);
+                }
             });
 
+            // Step 2: Forward the message
             document.getElementById('confirmForwardBtn').addEventListener('click', async () => {
                 const targetRoom = document.getElementById('roomSelect').value;
                 const sender = document.getElementById('selectedSender').textContent;
                 const body = document.getElementById('selectedBody').textContent;
-                const originalEvent = window._simulatedEvent;
 
                 if (!targetRoom) {
                     showError("Please select a destination room");
@@ -201,8 +213,10 @@
 
                 try {
                     showStatus("Forwarding message...");
-                    const messageLink = originalEvent ?
-                        `https://matrix.to/#/${originalEvent.room_id}/${originalEvent.event_id}` :
+
+                    const originalEvent = await widgetApi.readEventFromRoom();
+                    const messageLink = originalEvent ? 
+                        `https://matrix.to/#/${originalEvent.room_id}/${originalEvent.event_id}` : 
                         "[message link unavailable]";
 
                     const content = {
@@ -228,24 +242,26 @@
                     await widgetApi.sendEvent("m.room.message", content, targetRoom);
                     showSuccess("Message forwarded successfully!");
 
+                    // Reset after 2 seconds
                     setTimeout(() => {
                         document.getElementById('step2').classList.remove('active');
                         document.getElementById('step1').classList.add('active');
                         showStatus("");
                     }, 2000);
-
                 } catch (e) {
                     showError("Failed to forward message: " + e.message);
-                    console.error(e);
+                    console.error("Forward error:", e);
                 }
             });
 
+            // Cancel button
             document.getElementById('cancelBtn').addEventListener('click', () => {
                 document.getElementById('step2').classList.remove('active');
                 document.getElementById('step1').classList.add('active');
                 showStatus("");
             });
 
+            // Start widget API
             widgetApi.start();
         }
 
