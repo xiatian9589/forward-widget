@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Element Message Forwarder</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="Content-Security-Policy" content="frame-ancestors 'self' element: app.element.io; child-src blob:;">
+    <script src="https://unpkg.com/matrix-widget-api@0.1.8/dist/matrix-widget-api.min.js"></script>
+    <style>
+        :root {
+            --primary-color: #368bd6;
+            --hover-color: #2a6fac;
+            --background: #ffffff;
+            --text-color: #2e2f32;
+            --border-color: #e5e5e5;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            margin: 0;
+            padding: 15px;
+            background: var(--background);
+            color: var(--text-color);
+        }
+        
+        .container {
+            max-width: 400px;
+            margin: 0 auto;
+        }
+        
+        h2 {
+            color: var(--primary-color);
+            font-size: 18px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .step {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+        
+        .step.active {
+            display: block;
+        }
+        
+        button {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            width: 100%;
+            margin: 5px 0;
+            transition: background-color 0.2s;
+        }
+        
+        button:hover {
+            background-color: var(--hover-color);
+        }
+        
+        button.secondary {
+            background-color: #f0f0f0;
+            color: var(--text-color);
+        }
+        
+        button.secondary:hover {
+            background-color: #e0e0e0;
+        }
+        
+        select {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        .message-preview {
+            background-color: #f9f9f9;
+            border-left: 3px solid var(--primary-color);
+            padding: 10px;
+            margin: 15px 0;
+            border-radius: 0 4px 4px 0;
+        }
+        
+        .sender {
+            font-weight: bold;
+            color: var(--primary-color);
+        }
+        
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            text-align: center;
+        }
+        
+        .success {
+            background-color: #e8f5e9;
+            color: #2e7d32;
+        }
+        
+        .error {
+            background-color: #ffebee;
+            color: #c62828;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Enhanced Message Forwarder</h2>
+        
+        <div id="step1" class="step active">
+            <p>Select a message to forward from the room timeline:</p>
+            <button id="selectMessageBtn">Select Message</button>
+        </div>
+        
+        <div id="step2" class="step">
+            <div class="message-preview">
+                <p>Forwarding message from: <span id="selectedSender" class="sender"></span></p>
+                <p id="selectedBody"></p>
+            </div>
+            
+            <label for="roomSelect">Choose destination room:</label>
+            <select id="roomSelect"></select>
+            
+            <button id="confirmForwardBtn">Forward Message</button>
+            <button id="cancelBtn" class="secondary">Cancel</button>
+        </div>
+        
+        <div id="status" class="status"></div>
+    </div>
+
+    <script>
+        // Initialize widget API with enhanced desktop support
+        (function() {
+            // Domain fix for desktop client
+            try {
+                if (window.location.protocol === 'vector:') {
+                    document.domain = document.domain;
+                }
+            } catch (e) {
+                console.log("Domain setting not required");
+            }
+
+            // Status helpers
+            function showStatus(message) {
+                const el = document.getElementById('status');
+                el.textContent = message;
+                el.className = "status";
+            }
+            
+            function showError(message) {
+                const el = document.getElementById('status');
+                el.textContent = message;
+                el.className = "status error";
+                console.error(message);
+            }
+            
+            function showSuccess(message) {
+                const el = document.getElementById('status');
+                el.textContent = message;
+                el.className = "status success";
+            }
+
+            // Initialize widget API
+            let widgetApi;
+            try {
+                widgetApi = new matrixcs.WidgetApi(window.location.hash.substring(1));
+                
+                // Enhanced transport for desktop/web compatibility
+                widgetApi.transport.reply = function(ev) {
+                    return new Promise((resolve) => {
+                        try {
+                            if (window.matrixWidgetApi) {
+                                // Desktop client
+                                window.matrixWidgetApi.receiveMessage({ data: ev });
+                            } else {
+                                // Web client
+                                window.parent.postMessage(ev, "*");
+                            }
+                            resolve();
+                        } catch (e) {
+                            console.error("postMessage failed:", e);
+                        }
+                    });
+                };
+
+                // Event handlers
+                widgetApi.on("ready", () => {
+                    console.log("Widget ready");
+                    showStatus("Ready to forward messages");
+                    loadRooms();
+                });
+                
+                widgetApi.on("error", (err) => {
+                    console.error("Widget error:", err);
+                    showError("Connection error: " + err.message);
+                });
+
+                // Request capabilities
+                widgetApi.requestCapabilities([
+                    "org.matrix.msc2762.timeline:*",
+                    "org.matrix.msc2762.send.event:m.room.message",
+                    "org.matrix.msc2762.receive.state_event:m.room.member"
+                ]);
+
+            } catch (e) {
+                showError("Failed to initialize widget");
+                console.error("Initialization error:", e);
+                return;
+            }
+
+            // Load user's joined rooms
+            async function loadRooms() {
+                try {
+                    const rooms = await widgetApi.getJoinedRooms();
+                    const select = document.getElementById('roomSelect');
+                    select.innerHTML = '';
+                    
+                    if (rooms.length === 0) {
+                        select.innerHTML = '<option value="">No rooms available</option>';
+                        return;
+                    }
+                    
+                    rooms.forEach(roomId => {
+                        const option = document.createElement('option');
+                        option.value = roomId;
+                        option.textContent = roomId;
+                        select.appendChild(option);
+                    });
+                } catch (e) {
+                    showError("Failed to load rooms");
+                    console.error("Room load error:", e);
+                }
+            }
+
+            // Message selection
+            document.getElementById('selectMessageBtn').addEventListener('click', async () => {
+                try {
+                    showStatus("Click on a message in the room...");
+                    const event = await widgetApi.readEventFromRoom();
+                    
+                    if (event) {
+                        document.getElementById('selectedSender').textContent = event.sender;
+                        document.getElementById('selectedBody').textContent = event.content.body;
+                        
+                        document.getElementById('step1').classList.remove('active');
+                        document.getElementById('step2').classList.add('active');
+                        showStatus("");
+                    } else {
+                        showError("No message selected");
+                    }
+                } catch (e) {
+                    showError("Failed to select message");
+                    console.error("Selection error:", e);
+                }
+            });
+
+            // Forward message
+            document.getElementById('confirmForwardBtn').addEventListener('click', async () => {
+                const targetRoom = document.getElementById('roomSelect').value;
+                const sender = document.getElementById('selectedSender').textContent;
+                const body = document.getElementById('selectedBody').textContent;
+                
+                if (!targetRoom) {
+                    showError("Please select a destination room");
+                    return;
+                }
+                
+                try {
+                    showStatus("Forwarding message...");
+                    
+                    const content = {
+                        "msgtype": "m.text",
+                        "body": `[Forwarded from ${sender}]: ${body}`,
+                        "format": "org.matrix.custom.html",
+                        "formatted_body": `
+                            <blockquote>
+                                <strong>Forwarded from ${sender}:</strong><br>
+                                ${body}
+                            </blockquote>
+                        `,
+                        "m.relates_to": {
+                            "m.in_reply_to": {
+                                "event_id": "your_event_id_here" // Will be replaced
+                            }
+                        }
+                    };
+                    
+                    await widgetApi.sendEvent("m.room.message", content, targetRoom);
+                    showSuccess("Message forwarded!");
+                    
+                    // Reset after 2 seconds
+                    setTimeout(() => {
+                        document.getElementById('step2').classList.remove('active');
+                        document.getElementById('step1').classList.add('active');
+                        showStatus("");
+                    }, 2000);
+                    
+                } catch (e) {
+                    showError("Failed to forward message");
+                    console.error("Forward error:", e);
+                }
+            });
+
+            // Cancel button
+            document.getElementById('cancelBtn').addEventListener('click', () => {
+                document.getElementById('step2').classList.remove('active');
+                document.getElementById('step1').classList.add('active');
+                showStatus("");
+            });
+
+        })();
+    </script>
+</body>
+</html>
