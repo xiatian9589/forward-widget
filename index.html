@@ -101,17 +101,24 @@
 
 <script>
     function loadMatrixWidgetApi(callback) {
-        const script = document.createElement('script');
-        script.src = "https://unpkg.com/matrix-widget-api@0.3.0/dist/matrix-widget-api.min.js";
-        script.onload = () => {
-            console.log("✅ matrix-widget-api loaded!");
-            callback();
-        };
-        script.onerror = () => {
-            document.getElementById('status').textContent = "❌ Failed to load MatrixWidgetApi library.";
-        };
-        document.head.appendChild(script);
-    }
+    const script = document.createElement('script');
+    script.src = "https://unpkg.com/matrix-widget-api@0.3.0/dist/matrix-widget-api.min.js";
+    
+    console.log("Attempting to load matrix-widget-api...");
+
+    script.onload = () => {
+        console.log("✅ matrix-widget-api loaded successfully!");
+        callback();
+    };
+
+    script.onerror = (error) => {
+        console.error("❌ Failed to load MatrixWidgetApi library:", error);
+        document.getElementById('status').textContent = "❌ Failed to load MatrixWidgetApi library.";
+    };
+
+    // Appending the script to the document head
+    document.head.appendChild(script);
+}
 
     async function initializeWidget() {
         const statusEl = document.getElementById('status');
