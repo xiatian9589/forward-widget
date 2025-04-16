@@ -4,7 +4,7 @@
     <title>Element Message Forwarder</title>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta http-equiv="Content-Security-Policy" content="frame-ancestors 'self' element: app.element.io; child-src blob:;">
+    <!-- CSP will be handled by server headers -->
     <script src="https://unpkg.com/matrix-widget-api@0.1.8/dist/matrix-widget-api.min.js"></script>
     <style>
         :root {
@@ -141,8 +141,16 @@
     </div>
 
     <script>
-        // Initialize widget API with enhanced desktop support
-        (function() {
+        // Wait for the widget API to load
+        function initializeWidget() {
+            // Check if matrixcs is properly loaded
+            if (typeof matrixcs === 'undefined') {
+                document.getElementById('status').textContent = "Error: Widget API failed to load";
+                document.getElementById('status').className = "status error";
+                console.error("matrix-widget-api not loaded");
+                return;
+            }
+
             // Domain fix for desktop client
             try {
                 if (window.location.protocol === 'vector:') {
@@ -153,29 +161,28 @@
             }
 
             // Status helpers
+            const statusEl = document.getElementById('status');
             function showStatus(message) {
-                const el = document.getElementById('status');
-                el.textContent = message;
-                el.className = "status";
+                statusEl.textContent = message;
+                statusEl.className = "status";
             }
             
             function showError(message) {
-                const el = document.getElementById('status');
-                el.textContent = message;
-                el.className = "status error";
+                statusEl.textContent = message;
+                statusEl.className = "status error";
                 console.error(message);
             }
             
             function showSuccess(message) {
-                const el = document.getElementById('status');
-                el.textContent = message;
-                el.className = "status success";
+                statusEl.textContent = message;
+                statusEl.className = "status success";
             }
 
             // Initialize widget API
             let widgetApi;
             try {
-                widgetApi = new matrixcs.WidgetApi(window.location.hash.substring(1));
+                const widgetId = window.location.hash.substring(1);
+                widgetApi = new matrixcs.WidgetApi(widgetId);
                 
                 // Enhanced transport for desktop/web compatibility
                 widgetApi.transport.reply = function(ev) {
@@ -215,7 +222,7 @@
                 ]);
 
             } catch (e) {
-                showError("Failed to initialize widget");
+                showError("Failed to initialize widget: " + e.message);
                 console.error("Initialization error:", e);
                 return;
             }
@@ -280,25 +287,34 @@
                 try {
                     showStatus("Forwarding message...");
                     
+                    // Create matrix.to link to original message
+                    const originalEvent = await widgetApi.readEventFromRoom();
+                    const messageLink = originalEvent ? 
+                        `https://matrix.to/#/${originalEvent.room_id}/${originalEvent.event_id}` : 
+                        "[message link unavailable]";
+                    
                     const content = {
                         "msgtype": "m.text",
-                        "body": `[Forwarded from ${sender}]: ${body}`,
+                        "body": `[Forwarded from ${sender}]: ${body}\n\n${messageLink}`,
                         "format": "org.matrix.custom.html",
                         "formatted_body": `
-                            <blockquote>
-                                <strong>Forwarded from ${sender}:</strong><br>
-                                ${body}
-                            </blockquote>
+                            <div style="border-left: 3px solid #368bd6; padding-left: 10px; margin: 10px 0;">
+                                <p style="margin: 0 0 5px 0; color: #368bd6; font-weight: bold;">
+                                    Forwarded from ${sender}
+                                </p>
+                                <p style="margin: 0;">${body}</p>
+                            </div>
+                            <p><a href="${messageLink}" style="color: #368bd6;">View original message</a></p>
                         `,
                         "m.relates_to": {
                             "m.in_reply_to": {
-                                "event_id": "your_event_id_here" // Will be replaced
+                                "event_id": originalEvent?.event_id || ""
                             }
                         }
                     };
                     
                     await widgetApi.sendEvent("m.room.message", content, targetRoom);
-                    showSuccess("Message forwarded!");
+                    showSuccess("Message forwarded successfully!");
                     
                     // Reset after 2 seconds
                     setTimeout(() => {
@@ -308,7 +324,7 @@
                     }, 2000);
                     
                 } catch (e) {
-                    showError("Failed to forward message");
+                    showError("Failed to forward message: " + e.message);
                     console.error("Forward error:", e);
                 }
             });
@@ -319,8 +335,14 @@
                 document.getElementById('step1').classList.add('active');
                 showStatus("");
             });
+        }
 
-        })();
+        // Start initialization when API is ready
+        if (document.readyState === 'complete') {
+            initializeWidget();
+        } else {
+            window.addEventListener('load', initializeWidget);
+        }
     </script>
 </body>
 </html>
