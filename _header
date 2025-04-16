@@ -1,0 +1,4 @@
+/*
+  X-Frame-Options: ALLOW-FROM https://app.element.io
+  Content-Security-Policy: frame-ancestors 'self' https://app.element.io element:;
+  Access-Control-Allow-Origin: *
