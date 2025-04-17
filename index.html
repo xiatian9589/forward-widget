@@ -104,7 +104,7 @@
     <script>
         // Initialize widget API
         const widgetId = 'message-forwarder-' + Math.random().toString(36).substring(2, 9);
-        const api = new mxwidgets.WidgetApi(widgetId);
+        const api = new WidgetApi(widgetId);
         
         // Request necessary capabilities
         api.requestCapability('org.matrix.msc2762.timeline');
