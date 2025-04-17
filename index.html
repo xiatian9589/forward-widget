@@ -14,28 +14,32 @@
   <h1>Forward Message Widget</h1>
   <div id="messages">Loading messages...</div>
 
-  <script type="module">
-    import { MatrixWidgetApi } from "https://esm.sh/matrix-widget-api";
+  <!-- Load legacy Matrix Widget API -->
+  <script src="https://unpkg.com/matrix-widget-api@0.1.0/dist/api.min.js"></script>
 
-    const widgetApi = new MatrixWidgetApi();
+  <script>
+    const widgetId = null; // Let the host determine it
+    const api = new WidgetApi(widgetId);
 
-    await widgetApi.requestCapabilities([
+    api.requestCapabilities([
       "org.matrix.msc2876.send_event",
       "org.matrix.msc2876.receive_event",
       "org.matrix.msc2876.send_message"
     ]);
 
-    await widgetApi.start();
+    api.on("action:org.matrix.msc2876.timeline_event", (ev) => {
+      const event = ev.detail.data;
+      if (event.type === "m.room.message" && event.content?.body) {
+        displayMessage(event.sender, event.content.body);
+      }
+      api.transport.reply(ev.detail, {}); // acknowledge receipt
+    });
+
+    api.start();
+    api.sendContentLoaded();
 
     const container = document.getElementById("messages");
     container.innerHTML = "<em>Waiting for messages...</em>";
-
-    widgetApi.on("action:org.matrix.msc2876.timeline_event", event => {
-      const ev = event.detail.data;
-      if (ev.type === "m.room.message" && ev.content?.body) {
-        displayMessage(ev.sender, ev.content.body);
-      }
-    });
 
     function displayMessage(sender, body) {
       const div = document.createElement("div");
@@ -46,7 +50,7 @@
           msgtype: "m.text",
           body: `Forwarded from ${sender}: ${body}`
         };
-        await widgetApi.sendRoomEvent("m.room.message", content);
+        await api.sendEvent("m.room.message", content);
         alert("Message forwarded!");
       };
       container.appendChild(div);
