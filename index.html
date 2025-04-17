@@ -103,7 +103,11 @@
 
     <script>
         // Initialize widget API
-        import { WidgetApi, WidgetApiToWidgetAction, WidgetApiFromWidgetAction } from 'https://unpkg.com/matrix-widget-api@1.13.1/dist/api.mjs';
+        const {
+          WidgetApi,
+          WidgetApiToWidgetAction,
+          WidgetApiFromWidgetAction
+        } = globalThis.mxWasmWidgetApi;
         
         const widgetId = 'message-forwarder-' + Math.random().toString(36).substring(2, 9);
         const api = new WidgetApi(widgetId);
