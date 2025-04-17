@@ -1,163 +1,66 @@
-// Function to load the Matrix Widget API
-function loadMatrixWidgetApi(callback) {
-    const script = document.createElement('script');
-    script.src = "https://unpkg.com/matrix-widget-api@0.3.0/dist/matrix-widget-api.min.js";
-    
-    console.log("Attempting to load matrix-widget-api...");
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Matrix Forward Message Widget</title>
+  <meta charset="UTF-8" />
+  <script src="https://unpkg.com/matrix-widget-api"></script>
+  <style>
+    body { font-family: sans-serif; padding: 1em; }
+    #messages { margin-top: 1em; }
+    .message { border-bottom: 1px solid #ccc; padding: 0.5em 0; }
+    button { margin-left: 1em; }
+  </style>
+</head>
+<body>
+  <h1>Forward Message Widget</h1>
+  <div id="messages">Loading messages...</div>
 
-    script.onload = () => {
-        console.log("✅ matrix-widget-api loaded successfully!");
-        callback();
-    };
+  <script>
+    const widgetApi = new MatrixWidgetApi.WidgetApi();
 
-    script.onerror = (error) => {
-        console.error("❌ Failed to load MatrixWidgetApi library:", error);
-        document.getElementById('status').textContent = "❌ Failed to load MatrixWidgetApi library.";
-    };
-
-    // Appending the script to the document head
-    document.head.appendChild(script);
-}
-
-// Your widget initialization logic goes here
-async function initializeWidget() {
-    const statusEl = document.getElementById('status');
-    const showStatus = msg => { statusEl.textContent = msg; statusEl.className = "status"; };
-    const showError = msg => { statusEl.textContent = msg; statusEl.className = "status error"; console.error(msg); };
-    const showSuccess = msg => { statusEl.textContent = msg; statusEl.className = "status success"; };
-
-    if (!window.MatrixWidgetApi) {
-        showError("Matrix Widget API is still undefined.");
-        return;
-    }
-
-    const widgetId = window.location.hash?.substring(1) || "default-widget-id";
-    const widgetApi = new MatrixWidgetApi(widgetId);
-
+    // Start communication with the host
     widgetApi.requestCapabilities([
-        "org.matrix.msc2876.send_event",
-        "org.matrix.msc2876.receive_event",
-        "org.matrix.msc2876.send_event:m.room.message",
-        "org.matrix.msc2876.receive_event:m.room.message",
-        "org.matrix.msc2876.receive_state",
-        "org.matrix.msc2876.send_state",
-        "org.matrix.msc2876.send_state:m.room.message",
-        "org.matrix.msc2876.get_rooms"
+      "org.matrix.msc2876.send_event",
+      "org.matrix.msc2876.receive_event",
+      "org.matrix.msc2876.get_event",
+      "org.matrix.msc2876.send_message"
     ]);
+    widgetApi.start();
 
-    widgetApi.on("ready", () => {
-        console.log("✅ Widget is ready.");
-        showStatus("Ready to forward messages");
-        loadRooms();
-    });
+    async function fetchAndDisplayMessages() {
+      const roomId = await widgetApi.getRoomId();
+      const myUserId = await widgetApi.getUserId();
 
-    widgetApi.on("error", (err) => {
-        showError("Widget error: " + err.message);
-    });
+      const timeline = await widgetApi.receiveSingleStateEvent("m.room.message", "");
+      const events = await widgetApi.readEvents();
 
-    // Load rooms available for forwarding messages
-    async function loadRooms() {
-        try {
-            const rooms = await widgetApi.getJoinedRooms?.() || [];
-            const select = document.getElementById('roomSelect');
-            select.innerHTML = '';
+      const container = document.getElementById("messages");
+      container.innerHTML = "";
 
-            if (rooms.length === 0) {
-                select.innerHTML = '<option value="">No rooms available</option>';
-                return;
-            }
+      const textMessages = events.filter(e => e.type === "m.room.message" && e.content.body);
 
-            rooms.forEach(roomId => {
-                const option = document.createElement('option');
-                option.value = roomId;
-                option.textContent = roomId;
-                select.appendChild(option);
-            });
-        } catch (e) {
-            showError("Failed to load rooms");
-            console.error("Room load error:", e);
-        }
+      textMessages.reverse().slice(0, 10).forEach(event => {
+        const div = document.createElement("div");
+        div.className = "message";
+        const sender = event.sender;
+        const body = event.content.body;
+
+        div.innerHTML = `<strong>${sender}</strong>: ${body} <button>Forward</button>`;
+
+        div.querySelector("button").onclick = async () => {
+          const content = {
+            msgtype: "m.text",
+            body: `Forwarded from ${sender}: ${body}`
+          };
+          await widgetApi.sendRoomEvent("m.room.message", content);
+          alert("Message forwarded!");
+        };
+
+        container.appendChild(div);
+      });
     }
 
-    // Select a message to forward
-    document.getElementById('selectMessageBtn').addEventListener('click', async () => {
-        try {
-            showStatus("Click a message in the room timeline...");
-            const event = await widgetApi.readEventFromRoom();
-            console.log("Selected event:", event);
-
-            if (event) {
-                document.getElementById('selectedSender').textContent = event.sender;
-                document.getElementById('selectedBody').textContent = event.content.body;
-                document.getElementById('step1').classList.remove('active');
-                document.getElementById('step2').classList.add('active');
-                showStatus("");
-            } else {
-                showError("No message selected");
-            }
-        } catch (e) {
-            showError("Failed to select message");
-            console.error("Select error:", e);
-        }
-    });
-
-    // Forward the message to another room
-    document.getElementById('confirmForwardBtn').addEventListener('click', async () => {
-        const targetRoom = document.getElementById('roomSelect').value;
-        const sender = document.getElementById('selectedSender').textContent;
-        const body = document.getElementById('selectedBody').textContent;
-
-        if (!targetRoom) {
-            showError("Please select a destination room");
-            return;
-        }
-
-        try {
-            showStatus("Forwarding message...");
-            const originalEvent = await widgetApi.readEventFromRoom();
-            const messageLink = originalEvent ? 
-                `https://matrix.to/#/${originalEvent.room_id}/${originalEvent.event_id}` :
-                "[message link unavailable]";
-
-            const content = {
-                msgtype: "m.text",
-                body: `[Forwarded from ${sender}]: ${body}\n\n${messageLink}`,
-                format: "org.matrix.custom.html",
-                formatted_body: `
-                    <div style="border-left: 3px solid #368bd6; padding-left: 10px; margin: 10px 0;">
-                        <p style="margin: 0 0 5px 0; color: #368bd6; font-weight: bold;">
-                            Forwarded from ${sender}
-                        </p>
-                        <p style="margin: 0;">${body}</p>
-                    </div>
-                    <p><a href="${messageLink}" style="color: #368bd6;">View original message</a></p>
-                `
-            };
-
-            await widgetApi.sendEvent("m.room.message", content, targetRoom);
-            showSuccess("Message forwarded!");
-
-            setTimeout(() => {
-                document.getElementById('step2').classList.remove('active');
-                document.getElementById('step1').classList.add('active');
-                showStatus("");
-            }, 2000);
-        } catch (e) {
-            showError("Forwarding failed: " + e.message);
-            console.error("Forward error:", e);
-        }
-    });
-
-    // Cancel and reset the flow
-    document.getElementById('cancelBtn').addEventListener('click', () => {
-        document.getElementById('step2').classList.remove('active');
-        document.getElementById('step1').classList.add('active');
-        showStatus("");
-    });
-
-    // Start the widget
-    widgetApi.start();
-}
-
-// Load the Matrix Widget API and then initialize the widget
-loadMatrixWidgetApi(initializeWidget);
+    fetchAndDisplayMessages().catch(console.error);
+  </script>
+</body>
+</html>
