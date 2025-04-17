@@ -1,60 +1,240 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Matrix Forward Message Widget</title>
-  <meta charset="UTF-8" />
-  <style>
-    body { font-family: sans-serif; padding: 1em; }
-    #messages { margin-top: 1em; }
-    .message { border-bottom: 1px solid #ccc; padding: 0.5em 0; }
-    button { margin-left: 1em; }
-  </style>
+    <title>Message Forwarder Widget</title>
+    <script src="https://unpkg.com/matrix-widget-api@1.13.1/dist/api.min.js"></script>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            margin: 0;
+            padding: 15px;
+            background: #f3f3f3;
+            color: #333;
+        }
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            font-size: 18px;
+            margin-top: 0;
+            color: #368bd6;
+        }
+        .message-list {
+            max-height: 300px;
+            overflow-y: auto;
+            margin: 15px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+        }
+        .message {
+            padding: 8px;
+            margin-bottom: 8px;
+            background: #f9f9f9;
+            border-left: 3px solid #368bd6;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .message:hover {
+            background: #eef6ff;
+        }
+        .message.selected {
+            background: #e1f0ff;
+            border-left-color: #2e6da4;
+        }
+        .message-sender {
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+        .message-content {
+            font-size: 14px;
+        }
+        button {
+            background: #368bd6;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .room-selector {
+            margin-bottom: 15px;
+        }
+        select {
+            width: 100%;
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+        .status {
+            margin-top: 10px;
+            font-size: 13px;
+            color: #666;
+        }
+    </style>
 </head>
 <body>
-  <h1>Forward Message Widget</h1>
-  <div id="messages">Loading messages...</div>
+    <div class="container">
+        <h1>Message Forwarder</h1>
+        
+        <div class="room-selector">
+            <label for="target-room">Forward to room:</label>
+            <select id="target-room"></select>
+        </div>
+        
+        <div class="message-list" id="message-list">
+            <!-- Messages will appear here -->
+        </div>
+        
+        <button id="forward-btn" disabled>Forward Selected Message</button>
+        
+        <div class="status" id="status">Select a message to forward</div>
+    </div>
 
-  <!-- Load legacy Matrix Widget API -->
-  <script src="https://unpkg.com/matrix-widget-api@1.13.1/dist/api.min.js"></script>
-
-  <script>
-    const widgetId = null; // Let the host determine it
-    const api = new WidgetApi(widgetId);
-
-    api.requestCapabilities([
-      "org.matrix.msc2876.send_event",
-      "org.matrix.msc2876.receive_event",
-      "org.matrix.msc2876.send_message"
-    ]);
-
-    api.on("action:org.matrix.msc2876.timeline_event", (ev) => {
-      const event = ev.detail.data;
-      if (event.type === "m.room.message" && event.content?.body) {
-        displayMessage(event.sender, event.content.body);
-      }
-      api.transport.reply(ev.detail, {}); // acknowledge receipt
-    });
-
-    api.start();
-    api.sendContentLoaded();
-
-    const container = document.getElementById("messages");
-    container.innerHTML = "<em>Waiting for messages...</em>";
-
-    function displayMessage(sender, body) {
-      const div = document.createElement("div");
-      div.className = "message";
-      div.innerHTML = `<strong>${sender}</strong>: ${body} <button>Forward</button>`;
-      div.querySelector("button").onclick = async () => {
-        const content = {
-          msgtype: "m.text",
-          body: `Forwarded from ${sender}: ${body}`
-        };
-        await api.sendEvent("m.room.message", content);
-        alert("Message forwarded!");
-      };
-      container.appendChild(div);
-    }
-  </script>
+    <script>
+        // Initialize widget API
+        const widgetId = 'message-forwarder-' + Math.random().toString(36).substring(2, 9);
+        const api = new mxwidgets.WidgetApi(widgetId);
+        
+        // Request necessary capabilities
+        api.requestCapability('org.matrix.msc2762.timeline');
+        api.requestCapability('org.matrix.msc2762.send.event');
+        api.requestCapability('org.matrix.msc2762.receive.state_event');
+        
+        // DOM elements
+        const messageList = document.getElementById('message-list');
+        const forwardBtn = document.getElementById('forward-btn');
+        const targetRoomSelect = document.getElementById('target-room');
+        const statusEl = document.getElementById('status');
+        
+        // State
+        let selectedMessage = null;
+        let rooms = [];
+        let currentRoomId = null;
+        
+        // Start the widget API
+        api.start();
+        api.sendContentLoaded();
+        
+        // Handle incoming messages
+        api.on(`action:${mxwidgets.WidgetApiToWidgetAction.SendEvent}`, (ev) => {
+            const event = ev.detail.data;
+            
+            // Only handle message events
+            if (event.type === 'm.room.message') {
+                addMessageToUI(event);
+            }
+        });
+        
+        // Handle room state updates
+        api.on(`action:${mxwidgets.WidgetApiToWidgetAction.UpdateRoomState}`, (ev) => {
+            const state = ev.detail.data;
+            currentRoomId = state.room_id;
+            updateRoomList();
+        });
+        
+        // Initialize the widget
+        api.on(`ready`, () => {
+            statusEl.textContent = 'Ready to forward messages';
+            
+            // Request current room state
+            api.transport.send(mxwidgets.WidgetApiFromWidgetAction.GetRoomState, {})
+                .catch(err => console.error('Error getting room state:', err));
+        });
+        
+        // Add message to UI
+        function addMessageToUI(event) {
+            const messageEl = document.createElement('div');
+            messageEl.className = 'message';
+            messageEl.dataset.eventId = event.event_id;
+            
+            messageEl.innerHTML = `
+                <div class="message-sender">${event.sender}</div>
+                <div class="message-content">${event.content.body}</div>
+            `;
+            
+            messageEl.addEventListener('click', () => {
+                // Remove previous selection
+                document.querySelectorAll('.message').forEach(el => {
+                    el.classList.remove('selected');
+                });
+                
+                // Set new selection
+                messageEl.classList.add('selected');
+                selectedMessage = event;
+                forwardBtn.disabled = false;
+                statusEl.textContent = 'Message selected - choose destination room';
+            });
+            
+            messageList.appendChild(messageEl);
+        }
+        
+        // Update room list dropdown
+        function updateRoomList() {
+            // In a real widget, you'd get the list of rooms the user can access
+            // For this example, we'll just show the current room and a dummy room
+            rooms = [
+                { room_id: currentRoomId, name: 'Current Room' },
+                { room_id: '!dummyroom:example.com', name: 'Another Room' }
+            ];
+            
+            targetRoomSelect.innerHTML = '';
+            rooms.forEach(room => {
+                const option = document.createElement('option');
+                option.value = room.room_id;
+                option.textContent = room.name;
+                targetRoomSelect.appendChild(option);
+            });
+        }
+        
+        // Handle forward button click
+        forwardBtn.addEventListener('click', () => {
+            if (!selectedMessage) return;
+            
+            const targetRoomId = targetRoomSelect.value;
+            
+            // Create a new message event to forward
+            const content = {
+                msgtype: selectedMessage.content.msgtype,
+                body: `Forwarded: ${selectedMessage.content.body}`,
+                'm.relates_to': {
+                    'm.in_reply_to': {
+                        event_id: selectedMessage.event_id
+                    }
+                }
+            };
+            
+            statusEl.textContent = 'Forwarding message...';
+            forwardBtn.disabled = true;
+            
+            // Send the message
+            api.transport.send(mxwidgets.WidgetApiFromWidgetAction.SendEvent, {
+                room_id: targetRoomId,
+                type: 'm.room.message',
+                content: content
+            })
+            .then(() => {
+                statusEl.textContent = 'Message forwarded successfully!';
+                setTimeout(() => {
+                    statusEl.textContent = 'Select another message to forward';
+                }, 3000);
+            })
+            .catch(err => {
+                console.error('Error forwarding message:', err);
+                statusEl.textContent = 'Error forwarding message: ' + err.message;
+                forwardBtn.disabled = false;
+            });
+        });
+    </script>
 </body>
 </html>
