@@ -15,11 +15,7 @@
   <div id="messages">Loading messages...</div>
 
   <script type="module">
-    import {
-      createWidgetApi,
-      WidgetApiToWidgetAction,
-      WidgetApiToWidgetEvent,
-    } from "https://cdn.jsdelivr.net/npm/matrix-widget-api@1.0.0-beta.14/+esm";
+    import { createWidgetApi } from "https://esm.sh/matrix-widget-api";
 
     const widgetApi = createWidgetApi();
     await widgetApi.start();
