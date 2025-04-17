@@ -3,7 +3,6 @@
 <head>
   <title>Matrix Forward Message Widget</title>
   <meta charset="UTF-8" />
-  <script src="https://unpkg.com/matrix-widget-api"></script>
   <style>
     body { font-family: sans-serif; padding: 1em; }
     #messages { margin-top: 1em; }
@@ -15,52 +14,41 @@
   <h1>Forward Message Widget</h1>
   <div id="messages">Loading messages...</div>
 
-  <script>
-    const widgetApi = new MatrixWidgetApi.WidgetApi();
+  <script type="module">
+    import {
+      createWidgetApi,
+      WidgetApiToWidgetAction,
+      WidgetApiToWidgetEvent,
+    } from "https://cdn.jsdelivr.net/npm/matrix-widget-api@1.0.0-beta.14/+esm";
 
-    // Start communication with the host
-    widgetApi.requestCapabilities([
-      "org.matrix.msc2876.send_event",
-      "org.matrix.msc2876.receive_event",
-      "org.matrix.msc2876.get_event",
-      "org.matrix.msc2876.send_message"
-    ]);
-    widgetApi.start();
+    const widgetApi = createWidgetApi();
+    await widgetApi.start();
 
-    async function fetchAndDisplayMessages() {
-      const roomId = await widgetApi.getRoomId();
-      const myUserId = await widgetApi.getUserId();
+    const container = document.getElementById("messages");
+    container.innerHTML = "<em>Waiting for messages...</em>";
 
-      const timeline = await widgetApi.receiveSingleStateEvent("m.room.message", "");
-      const events = await widgetApi.readEvents();
+    // Listen to timeline events as they happen (real-time only)
+    widgetApi.on("action:org.matrix.msc2876.timeline_event", event => {
+      const ev = event.detail.data;
+      if (ev.type === "m.room.message" && ev.content?.body) {
+        displayMessage(ev.sender, ev.content.body);
+      }
+    });
 
-      const container = document.getElementById("messages");
-      container.innerHTML = "";
-
-      const textMessages = events.filter(e => e.type === "m.room.message" && e.content.body);
-
-      textMessages.reverse().slice(0, 10).forEach(event => {
-        const div = document.createElement("div");
-        div.className = "message";
-        const sender = event.sender;
-        const body = event.content.body;
-
-        div.innerHTML = `<strong>${sender}</strong>: ${body} <button>Forward</button>`;
-
-        div.querySelector("button").onclick = async () => {
-          const content = {
-            msgtype: "m.text",
-            body: `Forwarded from ${sender}: ${body}`
-          };
-          await widgetApi.sendRoomEvent("m.room.message", content);
-          alert("Message forwarded!");
+    function displayMessage(sender, body) {
+      const div = document.createElement("div");
+      div.className = "message";
+      div.innerHTML = `<strong>${sender}</strong>: ${body} <button>Forward</button>`;
+      div.querySelector("button").onclick = async () => {
+        const content = {
+          msgtype: "m.text",
+          body: `Forwarded from ${sender}: ${body}`
         };
-
-        container.appendChild(div);
-      });
+        await widgetApi.sendRoomEvent("m.room.message", content);
+        alert("Message forwarded!");
+      };
+      container.appendChild(div);
     }
-
-    fetchAndDisplayMessages().catch(console.error);
   </script>
 </body>
 </html>
